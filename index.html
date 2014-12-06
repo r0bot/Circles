@@ -1,0 +1,877 @@
+<!DOCTYPE HTML>
+<html>
+    <head>
+      <script language="javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.4.4/jquery.min.js" type="text/javascript"></script>
+        <script language="javascript" src="animation.js" type="text/javascript"></script>
+    </head>
+    <body>
+    <script> 
+
+/**  Initialize the game  */	
+function init(){
+
+/** The animation engine **/
+	// Cross browser, backward compatible solution
+	
+// Cross browser, backward compatible solution
+(function( window, Date ) {
+			// feature testing
+var raf = window.mozRequestAnimationFrame ||
+window.webkitRequestAnimationFrame ||
+window.msRequestAnimationFrame ||
+window.oRequestAnimationFrame;
+		window.animLoop = function( render, element ) {
+		var running, lastFrame = +new Date;
+		function loop( now ) {
+		if ( running !== false ) {
+			raf ?
+			raf( loop, element ) :
+        // fallback to setTimeout
+        setTimeout( loop, 16 );
+      // Make sure to use a valid time, since:
+      // - Chrome 10 doesn't return it at all
+      // - setTimeout returns the actual timeout
+      now = now && now > 1E4 ? now : +new Date;
+      var deltaT = now - lastFrame;
+      // do not render frame when deltaT is too high
+      if ( deltaT < 60 ) {
+        running = render( deltaT, now );
+      }
+      lastFrame = now;
+    }
+  }
+  loop();
+};
+})
+( window, Date );
+
+
+/** The animation engine End **/
+
+
+/** Set The Canvas */
+	var canvas = document.getElementById('myCanvas');
+	var context = canvas.getContext("2d");	
+/** Set The Canvas End */
+	
+/** Set the variables */
+	var maxEnemies = 30;
+	var enemySize = 8;
+	var playerSize = 12;
+	var maxBonuses = 3;
+	var bonusSize = 8;
+	var speedDifficulty = 0;
+	var movementSpeed = 3;
+	var speedDifficultyMultiplier = 0.00001;
+	var canvasWidth = 600;
+	var canvasHeight = 250;
+	var timeLastEnemySpawn = 0;			
+	var timeLastBonusSpawn = 0;
+	var timeGameStart = 0;
+	var timeSinceGameStart = 0;
+	var timeSinceGameStartReal = 0;
+	var spawnEnemyInterval = 200;
+	var spawnBonusInterval = 800;
+	var bonusCollisions = 0;
+	var enemyCollisions = 0;
+	var sprites = {
+	player: null,
+	enemy: null,
+	bonus: null
+	};
+/** Set the variables End*/
+
+	
+/** Game States */
+	var state = 
+				{
+					menu: true,
+					play: false,
+					scorescreen: false,
+				};
+/** Game States End */
+	
+/** Mouse Events Section */
+	var mouse = 
+			{
+				x:0,
+				y:0,
+				previousX:0,
+				previousY:0,
+				down:false
+			};
+	/* Mouse Move Event */
+	canvas.addEventListener("mousemove", mouseMove, false);
+	
+	function mouseMove(e){
+	  mouse.previousX = mouse.x;
+	  mouse.previousY = mouse.y;
+	  
+		if (e.pageX)   
+		{
+			mouse.x = e.pageX;
+		} 
+			else if (e.clientX)   
+		{
+			mouse.x = e.clientX + document.body.scrollLeft
+		  		+ document.documentElement.scrollLeft;
+		}
+		mouse.x = mouse.x - canvas.offsetLeft;
+		if (e.pageY)   
+		{
+			mouse.y = e.pageY;
+		} 
+		else if (e.clientY)   
+		{
+			mouse.y = e.clientY + document.body.scrollTop
+		  		+ document.documentElement.scrollTop;
+		}
+		mouse.y = mouse.y - canvas.offsetTop;
+	};
+	/* Mouse Move Event End */
+	
+	/* Mouse Down Event */
+	canvas.addEventListener("mousedown", mouseDown, false);
+	function mouseDown(e){
+	mouse.down = true;
+	};
+	
+	/* Mouse Down Event End */
+	
+	/* Mouse Up Event */
+	canvas.addEventListener("mouseup", mouseUp, false);
+	function mouseUp(e) {
+	mouse.down = false;
+	};
+	/* Mouse Up Event End*/
+/** Mouse Events Section End */		
+
+
+/**  Establish Classes */
+
+	/* Meta class */
+	function Meta(){	
+		this.fps = 0;
+		this.fpsMin = 0;
+		this.fpsMax = 0;
+		this.frameCount = 0;
+		this.timeLastSecond = 0;
+		this.framesThisSecond = 0;
+		this.FRAMERATE = 60;
+	};
+	
+	Meta.prototype.update = function(){
+		// Fetch the current time for this frame
+		var timeNow = Date.now();
+		// Increase the frame count
+		timeSinceGameStart = timeNow - timeGameStart;
+		
+		/* Calculate Real Time */ 
+		// in minutes and seconds 
+		// Fix Seconds are displaying as 1 more than it actually is better logic for calculating needed 
+		var minutes = Math.floor(((timeSinceGameStart/1000)+1) / 60);
+		var seconds = Math.round((timeSinceGameStart/1000) - (minutes * 59));
+		seconds < 10 ? seconds = "0" + seconds : seconds = seconds;
+		minutes < 10 ? minutes = "0" + minutes : minutes = minutes;		
+		timeSinceGameStartReal = minutes + " : " + seconds;	
+		/* Calculate Real Time End */
+		
+		this.framesThisSecond ++;
+		// Check if a second has passed since the last time we updated the FPS
+			if( timeNow > this.timeLastSecond + 1000 ) {
+				// Establish the current, minimum and maximum FPS
+				this.fps =  Math.round(( this.framesThisSecond * 1000 ) / ( timeNow - this.timeLastSecond ));
+				this.fpsMin = Math.min( this.fpsMin, this.fps );
+				this.fpsMax = Math.max( this.fpsMax, this.fps );
+				this.timeLastSecond = timeNow;
+				this.framesThisSecond = 0;
+			};
+
+		this.frameCount ++;
+		this.timeLastFrame = timeNow;
+	};
+	/* Meta class End */
+
+	/* Base Point class */	
+	function Point( x, y ) {
+		this.x = x || 100;
+		this.y = y || 100;
+	};
+
+	Point.prototype.distanceTo = function(p) {
+		var dx = p.x-this.x;
+		var dy = p.y-this.y;
+		return Math.sqrt(dx*dx + dy*dy);
+	};
+
+	Point.prototype.clonePosition = function() {
+		return { x: this.x, y: this.y };
+	};
+
+	Point.prototype.interpolate = function( x, y, amp ) {
+		this.x += Math.floor(( x - this.x ) * amp);
+		this.y += Math.floor(( y - this.y ) * amp);
+	};
+	/* Base class End*/
+	
+	/* Base Entity */
+	function Entity(x,y) {
+		this.alive = false;
+	}
+	Entity.prototype = new Point();
+	/* Base Entity End*/
+
+	/* Player Entity */
+	function Player() {
+		this.energy = 100;
+		this.radiussmall = enemySize / 6;
+		this.radiusbig = playerSize;
+	}
+	Player.prototype = new Entity();
+	/* Player Entity End*/
+
+	/* Enemy Enity */
+	function Enemy() {
+		this.movex = 1 * movementSpeed ;
+		this.radiussmall = enemySize / 4;
+		this.radiusbig = enemySize;
+	};
+	Enemy.prototype = new Entity();
+	/* Enemy Enity End*/
+	
+	/* Bonus Enity */
+	function Bonus() {
+		this.movex = 1 * movementSpeed;
+		this.radiussmall = bonusSize / 4;
+		this.radiusbig = bonusSize;
+	};
+	Bonus.prototype = new Entity();
+	/* Bonus Enity End*/
+	
+	/* Event Entity */
+	function Event(){
+	this.width = 0;
+	this.height = 0;
+	this.radius = 0;
+	this.shapetype = 0;
+	this.eventtype = 0;
+	this.func = 0;
+	};
+	Event.prototype = new Entity();
+	Event.prototype.addEventRegion = function(x,y,width,height,radius,shapetype,eventtype,func){ //Supported event types: mousedown,mousein,mouseout ; Supported shapetype: rect,circle (free shapes will be added in future)
+		var event = new Event();
+		event.x = x;
+		event.y = y;
+		event.width = width;
+		event.height = height;
+		event.shapetype = shapetype;
+		event.eventtype = eventtype;
+		event.func = func;
+		eventRegions.push(event);
+	};
+	Event.prototype.handleEvents = function(){
+		var i = eventRegions.length;
+		while(i--){
+		var event = eventRegions[i];
+			switch(event.shapetype){
+				case "rect":
+				context.beginPath();
+				 context.rect(event.x,event.y,event.width,event.height);
+				 context.closePath();
+				break;
+				case "circle":
+				context.beginPath();
+				  context.arc(event.x, event.y, event.radius, 0, Math.PI * 2, true);
+				  context.closePath();
+				break;
+			};
+			switch(event.eventtype){
+				case "mousedown":
+					if (context.isPointInPath(mouse.x, mouse.y) && mouse.down == true){
+						event.func();
+					};
+				break;
+				case "mousein":
+					if (context.isPointInPath(mouse.x, mouse.y) && mouse.down == false){
+						event.func();
+					};
+				break;
+				case "mouseout":
+					if (!(context.isPointInPath(mouse.x, mouse.y))){
+						event.func();
+					};
+				break;
+			};
+		};
+	
+	};
+	/* Event Entity */
+	
+	/* Particle Entity */
+	function Particle( x, y, speed, color ) {
+		this.x = x;
+		this.y = y;
+
+		this.velocity = {
+		x: -speed+(Math.random()*speed*2),
+		y: -speed+(Math.random()*speed*2)
+		};
+
+		this.color = color;
+		this.alpha = 1;
+		this.fading = false;
+	};
+	Particle.prototype = new Entity();
+	/* Particle Entity End */
+/** Establish Classes End */
+
+
+
+
+/** Spawn Objects */
+
+	/* Spawn Enemies */
+	function spawnEnemies(){
+	var timeNow = Date.now();
+	
+		if (timeNow - timeLastEnemySpawn > spawnEnemyInterval - (speedDifficulty * 15)){
+		var i = enemies.length;
+		
+			if (i < maxEnemies){
+				var enemy = new Enemy();
+				enemy.x = canvasWidth;
+				enemy.y = Math.floor((Math.random() * (canvasHeight - enemy.radiusbig )) + 1 + enemy.radiusbig) ;
+				enemy.alive = true;
+				enemies.push(enemy);
+			};
+		timeLastEnemySpawn = timeNow;
+		};
+	
+	};
+	/* Spawn Enemies End */
+	
+	/* Spawn Bonuses */
+	function spawnBonuses(){
+	var timeNow = Date.now();
+	
+		if (timeNow - timeLastBonusSpawn > spawnBonusInterval - (speedDifficulty * 15)){
+		var i = bonuses.length;
+		
+			if (i < maxBonuses){
+				var bonus = new Bonus();
+				bonus.x = canvasWidth;
+				bonus.y = Math.floor((Math.random() * (canvasHeight - bonus.radiusbig)) + 1 + bonus.radiusbig);
+				bonus.alive = true;
+				bonuses.push(bonus);
+			};
+		timeLastBonusSpawn = timeNow;
+		};
+	
+	};
+	/* Spawn Bonuses End */
+	
+	/* Spawn Particles */
+	function emitParticles( color, x, y, speed, quantity ) {
+		while( quantity-- ) {
+			particles.push( new Particle( Math.floor(x), Math.floor(y), speed, color ) );
+		};
+	};
+	/* Spawn Particles End */
+/** Spawn Enemies and Bonuses End */
+
+
+/** Update Objects */
+
+	/* Enemies */
+	function updateEnemies(){
+
+		var i = enemies.length;
+
+			while (i--){
+			enemy = enemies[i];
+			
+			enemy.x -= Math.round(enemy.movex + speedDifficulty);
+				 
+				if(enemy.x <= 0 || enemy.alive == false){
+					enemies.splice(i,1);
+				}else{
+					enemies.splice(i,1,enemy);
+				};
+
+			};
+	};
+	/* Enemies End */
+	
+	/* Bonuses */
+	function updateBonuses(){
+
+		var i = bonuses.length;
+
+			while (i--){
+			bonus = bonuses[i];
+			
+			bonus.x -= Math.round(bonus.movex + speedDifficulty);
+				 
+				if(bonus.x <= 0 || bonus.alive == false){
+					bonuses.splice(i,1);
+				}else{
+					bonuses.splice(i,1,bonus);
+				};
+
+			};
+	};
+	/* Bonuses End */
+	
+	/* Player */
+	function updatePlayer(){
+	
+		player.interpolate(mouse.x, mouse.y, 0.2);
+	};	
+	/* Player End */
+	
+	/* Meta */
+	function updateMeta(){
+	
+		meta.update();
+	};
+	/* Meta End */
+	
+	/* Game State */
+	function checkGameState(){
+		speedDifficulty += (timeSinceGameStart / 1000)* speedDifficultyMultiplier;
+	
+		if (player.x - player.radiussmall <= 0 || player.x + player.radiussmall > canvasWidth || player.y - player.radiussmall <= 0 || player.y + player.radiussmall > canvasHeight || player.energy <= 0){
+			player.alive = false;
+			state.play = false;
+			state.menu = false;
+			state.scorescreen = true;
+		};
+	
+	};	
+	/* Game State End */
+	
+	/* Particles */
+	function updateParticles() {
+		var i = particles.length;
+
+			while( i-- ) {
+				var particle = particles[i];
+				particle.x += Math.floor(particle.velocity.x) - movementSpeed;
+				particle.y += Math.floor(particle.velocity.y) ;
+				particle.velocity.x *= 0.98;
+				particle.velocity.y *= 0.98;
+				if ( particle.fading === true ) {
+					particle.alpha *= 0.92;
+				}else if( Math.random() > 0.92 ) {
+					particle.fading = true;
+				};
+
+				if( particle.alpha < 0.05 ) {
+					particles.splice(i,1);
+				};
+			};
+
+	};
+	/* Particles End */
+/** Update Objects End */
+
+
+/** Draw Objects */
+
+	/* Create Sprites */
+	function createSprites() {
+	var canvasWidth = 64,
+	canvasHeight = 64,
+	cvs,
+	ctx;
+
+	/* Enemy Sprite */
+	cvs = document.createElement( 'canvas' );
+	cvs.setAttribute( 'width', canvasWidth );
+	cvs.setAttribute( 'height', canvasHeight );
+	ctx = cvs.getContext('2d');
+		/* Inner Circle*/
+	ctx.beginPath();
+	ctx.arc(Math.floor(canvasWidth * 0.5), Math.floor(canvasHeight * 0.5), enemySize / 4, 0, 2 * Math.PI, false);
+	ctx.fillStyle = "grey";
+	ctx.fill();
+	ctx.closePath();
+		/* Inner Circle End */
+			
+		/* Outer Circle */
+	ctx.beginPath();
+	ctx.arc(Math.floor(canvasWidth * 0.5), Math.floor(canvasHeight * 0.5), enemySize, 0, 2 * Math.PI, false);
+	ctx.restore();	
+	ctx.closePath();
+	ctx.strokeStyle = "red";
+	ctx.stroke();
+		/* Outer Circle End*/
+
+	sprites.enemy = cvs;
+	/* Enemy Sprite End */
+	
+	/* Bonus Sprite */
+	cvs = document.createElement( 'canvas' );
+	cvs.setAttribute( 'width', canvasWidth );
+	cvs.setAttribute( 'height', canvasHeight );
+	ctx = cvs.getContext('2d');
+		/* Inner Circle*/
+	ctx.beginPath();	
+	ctx.arc(Math.floor(canvasWidth * 0.5),Math.floor(canvasHeight * 0.5), bonusSize / 4 , 0, 2 * Math.PI, false);
+	ctx.fillStyle = "grey";
+	ctx.fill();
+	ctx.closePath();
+		/* Inner Circle End */
+			
+		/* Outer Circle */
+	ctx.beginPath();
+	ctx.arc(Math.floor(canvasWidth * 0.5), Math.floor(canvasHeight * 0.5), bonusSize, 0, 2 * Math.PI, false);
+	ctx.closePath();
+	ctx.strokeStyle = "blue";
+	ctx.stroke();
+		/* Outer Circle End*/
+
+	sprites.bonus = cvs;
+	/* Bonus Sprite End */
+	
+	/* Player Sprite */
+	cvs = document.createElement( 'canvas' );
+	cvs.setAttribute( 'width', canvasWidth );
+	cvs.setAttribute( 'height', canvasHeight );
+	ctx = cvs.getContext('2d');
+		/* Inner Circle*/
+	ctx.beginPath();
+	ctx.arc(Math.floor(canvasWidth * 0.5),Math.floor(canvasHeight * 0.5), playerSize / 6, 0, 2 * Math.PI, false);
+	ctx.fillStyle = "grey";
+	ctx.fill();
+	ctx.closePath();
+		/* Inner Circle End */
+			
+		/* Outer Circle */
+	ctx.beginPath();
+	ctx.arc(Math.floor(canvasWidth * 0.5), Math.floor(canvasHeight * 0.5), playerSize, 0, 2 * Math.PI, false);
+	ctx.closePath();
+	ctx.strokeStyle = "grey";
+	ctx.stroke();
+		/* Outer Circle End */
+		
+	sprites.player = cvs;
+	/* Player Sprite End */	
+	
+	};
+	/* Create Sprites End */
+
+
+	/* Draw Enemies */
+	function drawEnemies(){
+	var i = enemies.length;
+
+		while (i--){
+			enemy = enemies[i];
+			sprite = sprites.enemy;
+			context.save();
+			context.translate( Math.round( enemy.x ), Math.round( enemy.y ) );
+			context.drawImage( sprite, -Math.round( sprite.width/2 ), -Math.round( sprite.height/2 ) );
+			context.restore();			
+		};
+	};
+	/* Draw Enemies End */
+	
+	/* Draw Bonuses */
+	function drawBonuses(){
+	var i = bonuses.length;
+
+		while (i--){
+			bonus = bonuses[i];
+			
+			sprite = sprites.bonus;
+			context.save();
+			context.translate( Math.round( bonus.x ), Math.round( bonus.y ) );
+			context.drawImage( sprite, -Math.round( sprite.width/2 ), -Math.round( sprite.height/2 ) );
+			context.restore();	
+		};
+	};	
+	/* Draw Bonuses End */
+	
+	/* Draw Player */
+	function drawPlayer(){
+	
+			sprite = sprites.player;
+			context.save();
+			context.translate( Math.round( player.x ), Math.round( player.y ) );
+			context.drawImage( sprite, -Math.round( sprite.width/2 ), -Math.round( sprite.height/2 ) );
+			context.restore();	
+	};
+	/* Draw Player End */
+	
+	/* Draw Menu */
+	function drawMenu(){
+		
+		context.save();
+		context.beginPath();
+		context.rect(30, 80, 80, 20);
+		/* Add event for the button Start Game */
+		/* This maybe needs to be somewhere else for easy code reading */
+		regionEvents.addEventRegion(30, 80, 60, 20,0,"rect","mousedown",function(){
+		state.play = true;
+		state.scorescreen = false;
+		state.menu = false;
+		player.alive = true;		
+		});
+		/* Add event for the button Start Game End */
+		context.strokeStyle = "grey";
+        context.stroke();
+		context.closePath();
+		
+		context.beginPath();
+		context.font = "12pt Calibri";
+		context.fillText("Start Game", 33, 95);
+		context.fillStyle = "grey";
+		context.fill();
+		context.closePath();
+		context.restore();
+	};
+	
+	/* Draw Menu End */
+	
+	/* Draw Score Screen */
+	function drawScoreScreen(){
+		
+		context.save();
+		context.beginPath();
+		context.rect(30, 80, 80, 20);
+		/* Add event for the button Play Again */
+		/* This maybe needs to be somewhere else for easy code reading */
+		regionEvents.addEventRegion(30, 80, 60, 20,0,"rect","mousedown",function(){
+		/* Restart Some Variable */
+		/* This might be done with a function Update in future */
+		timeGameStart = Date.now();
+		player = new Player();
+		meta = new Meta();
+		regionEvents = new Event();
+		eventRegions = [];
+		bonuses = [];
+		enemies = [];
+		state.play = true;
+		state.scorescreen = false;
+		state.menu = false;
+		player.alive = true;
+		bonusCollisions = 0;
+		speedDifficulty = 0;
+		particles = [];		
+		});
+		/* Add event for the button Play Again End */
+		context.stroke();
+		context.closePath();
+		
+		/* Set text options */
+		context.font = "12pt Calibri";
+		context.fillStyle = "grey";
+		/* Set text options End */
+		/* Draw Buton and score text */
+		context.beginPath();
+		
+		context.fillText("Start Again", 35, 95);
+		context.fill();
+		
+		context.fillText("Your Score :", canvasWidth / 2.8 , canvasHeight * 0.2);
+		context.fill();
+		
+		context.fillText(bonusCollisions, canvasWidth / 2.8 + 85, canvasHeight * 0.2);
+		context.fill();
+		
+		context.closePath();
+		context.restore();
+		/* Draw Buton and score text End*/
+	};
+	/* Draw Score Screen End */
+	
+	/* Draw UI */
+	function drawUI(){
+		/* Set text options */
+		context.save();
+		context.fillStyle = "grey";
+		context.font = "11pt Calibri";
+		/* Draw UI text */
+		context.beginPath();
+		
+		/* Energy */
+		context.fillText("Energy :", canvasWidth / 40, canvasHeight / 16);
+		context.fill();
+		
+		context.fillText(player.energy, canvasWidth / 40 + 55, canvasHeight / 16);
+		context.fill();		
+		/* Energy End */
+		/* Score */
+		context.fillText("Score :", canvasWidth / 4, canvasHeight / 16);
+		context.fill();
+		
+		context.fillText(bonusCollisions, canvasWidth / 4 + 50, canvasHeight / 16);
+		context.fill();
+		/* Score End */
+		/* FPS */
+		context.fillText("FPS :", canvasWidth / 2, canvasHeight / 16);
+		context.fill();
+		
+		context.fillText(meta.fps, canvasWidth / 2 + 50, canvasHeight / 16);
+		context.fill();
+		/* FPS End */
+		/* Time Elapsed */
+		context.fillText("Time Elapsed :", canvasWidth / 1.4, canvasHeight / 16);
+		context.fill();
+		
+		context.fillText(timeSinceGameStartReal, canvasWidth / 1.4 + 100, canvasHeight / 16);
+		context.fill();
+		/* Time Elapsed End */
+		
+		context.closePath();
+		context.restore();
+		/* Draw UI text End */
+	
+	};
+	/* Draw UI End */
+	
+	/* Draw Particles */
+	function renderParticles(){
+	var i = particles.length;
+		while( i-- ) {
+			var particle = particles[i];
+			context.save();
+			context.beginPath();
+			context.globalAlpha = particle.alpha;
+			context.arc(Math.round(particle.x),Math.round(particle.y), 2, 0, 2 * Math.PI, false);
+			context.fillStyle = particle.color;
+			context.fill();
+			context.closePath();
+			context.restore();
+		};
+
+	};
+	/* Draw Particles End */
+/** Draw Objects End */
+
+
+/** Detect Collisions */
+
+	function detectCollisions(){
+	/* Detect collisions once every 3 frames to avoid lag */
+		if ( meta.frameCount % 2 == 1 ) {
+		/* Bonus Collisions  */
+		var i = bonuses.length;
+
+			while (i--){
+			bonus = bonuses[i];
+				if(bonus.distanceTo(player) < player.radiusbig + bonus.radiusbig){
+				emitParticles("blue",bonus.x,bonus.y,3,15);
+				bonusCollisions +=  1;
+				player.energy < 100 ? player.energy += 5 : player.energy = player.energy;
+				bonuses.splice(i,1);
+				};
+			};
+		/* Bonus Collisions  End*/
+
+		/* Enemy Collisions  */
+		var i = enemies.length;
+			while (i--){
+			enemy = enemies[i];
+				if(enemy.distanceTo(player) < player.radiusbig + enemy.radiusbig){
+				emitParticles("red",enemy.x,enemy.y,3,15);
+				player.energy -= 30;
+				enemies.splice(i,1);
+				};
+			};
+		/* Enemy Collisions  */
+		};
+	};
+/** Detect Collisions */
+
+/** Initialize Additional Variables */
+/* Restart variables first time game is initialized */
+var player = new Player();
+var meta = new Meta();
+var regionEvents = new Event();
+var eventRegions = new Array();
+var bonuses = new Array();
+var enemies = new Array();
+timeGameStart = Date.now();
+particles = [];
+
+function reset(){
+var player = new Player();
+var meta = new Meta();
+var regionEvents = new Event();
+eventRegions = [];
+bonuses = [];
+enemies = [];
+timeGameStart = Date.now();
+particles = [];
+};
+	
+/** Initialize Additional Variables End*/
+
+
+/** Update Function */
+	function update(){
+	context.clearRect(0, 0, canvasWidth, canvasHeight);
+		
+		/* Game Running */
+		if (state.play == true && player.alive == true){
+		
+			spawnEnemies();
+			updateEnemies();
+			drawEnemies();
+
+			spawnBonuses();
+			updateBonuses();
+			drawBonuses();
+
+			updatePlayer();
+			drawPlayer();
+
+			detectCollisions();
+			updateParticles();
+			renderParticles();
+
+			updateMeta();
+			drawUI();
+			
+			checkGameState();
+		};
+		/* Game Running End */
+		
+		/* Menu */
+		if(state.menu == true && player.alive == false){
+		
+		drawMenu();
+		regionEvents.handleEvents();
+		};
+		/* Menu End */
+		
+		/* Score Screen */
+		if(state.scorescreen == true && player.alive == false){
+		
+		drawScoreScreen();
+		regionEvents.handleEvents();
+		};
+		/* Score Screen End */
+	};
+/** Update Function End */
+createSprites();
+/** Animation Loop */
+	animLoop(function( deltaT, now ) {
+		// rendering code goes here
+		
+		update();
+		// return false; will stop the loop
+	}, canvas );
+/** Animation Loop End*/
+
+};
+/**  Initialize the game  End*/
+	
+window.onload = init;	
+</script> 
+        <canvas id="myCanvas" width="600" height="250" style="border:1px solid black;">
+        </canvas>
+    </body>
+</html>
