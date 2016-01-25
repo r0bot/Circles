@@ -15,3 +15,4 @@ Known issues:
 Optimizations:
   Better algo for collision detection. Cut the scene into smaller pieces and detec collisions only inside there.
   Dont clear the whole svg on every frame. Remmember shape possitions and clear squares around them.
+  Create predefined array to hold skelleton objects for shape and recicle and reuse them, this will optimize memory usage. 
